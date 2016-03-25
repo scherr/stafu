@@ -48,8 +48,14 @@ public final class Statification {
                 CtClass fic = cp.get(Descriptor.toJavaName(sl.getFunctionalInterfaceClass()));
 
                 Class<?> capturingClass = Class.forName(Descriptor.toJavaName(sl.getCapturingClass()));
-                // CtClass statifiedClass = cp.makeClass("stala.Statified");
-                CtClass statifiedClass = cp.makeClass(capturingClass.getPackage().getName() + ".Statified");
+                // CtClass statifiedClass = cp.makeClass("stafu.Statified");
+                Package capturingClassPackage = capturingClass.getPackage();
+                CtClass statifiedClass;
+                if (capturingClassPackage == null) {
+                    statifiedClass = cp.makeClass("Statified");
+                } else {
+                    statifiedClass = cp.makeClass(capturingClassPackage.getName() + ".Statified");
+                }
                 // TODO: Is there a way we can avoid naming conflicts?
 
                 statifiedClass.setInterfaces(new CtClass[]{fic, SERIALIZABLE_CT_CLASS});
@@ -65,7 +71,9 @@ public final class Statification {
                     statifiedClass.addField(argField);
                 }
 
-                CtMethod lambdaMethod = new CtMethod(implMethod, statifiedClass, null);
+                ClassMap map = new ClassMap();
+                map.fix(implClass); // This is necessary due to the copying behavior of CtMethod's constructor!
+                CtMethod lambdaMethod = new CtMethod(implMethod, statifiedClass, map);
                 lambdaMethod.setName(statifiedClass.makeUniqueName("lambda"));
                 statifiedClass.addMethod(lambdaMethod);
 
