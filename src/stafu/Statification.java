@@ -145,7 +145,6 @@ public final class Statification {
             ClassPool cp = ClassPool.getDefault();
             CtClass fixClass = cp.makeClass("stafu.Fix");
             fixClass.addInterface(cp.get("java.util.function.Supplier"));
-            fixClass.setModifiers(Modifier.FINAL);
 
             CtField fixedPointField = CtField.make("private static final Object fixedPoint;", fixClass);
             fixClass.addField(fixedPointField);
