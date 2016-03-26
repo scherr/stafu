@@ -58,7 +58,7 @@ public final class Statification {
                 } else {
                     statifiedClass = cp.makeClass(capturingClassPackage.getName() + ".Statified");
                 }
-                // TODO: Is there a way we can avoid naming conflicts?
+                // It seems the later (anonymized) renaming mechanism is able to avoid class-name conflicts
 
                 statifiedClass.setInterfaces(new CtClass[]{fic, SERIALIZABLE_CT_CLASS});
                 statifiedClass.addConstructor(CtNewConstructor.defaultConstructor(statifiedClass));
@@ -122,12 +122,12 @@ public final class Statification {
                         }
                         return Optional.of((F) definedClass.newInstance());
                     } catch (IllegalAccessException | InstantiationException | NoSuchFieldException e) {
-                        // e.printStackTrace();
+                        e.printStackTrace();
                         return Optional.empty();
                     }
                 });
             } catch (IOException | CannotCompileException | ClassNotFoundException | NotFoundException e) {
-                // e.printStackTrace();
+                e.printStackTrace();
                 return Optional.empty();
             }
         });
@@ -175,12 +175,12 @@ public final class Statification {
                     setFinalStatic(field, f);
                     return Optional.of(f);
                 } catch (IllegalAccessException | NoSuchFieldException | InstantiationException e) {
-                    // e.printStackTrace();
+                    e.printStackTrace();
                     return Optional.empty();
                 }
             });
         } catch (CannotCompileException | IOException | NotFoundException e) {
-            // e.printStackTrace();
+            e.printStackTrace();
             statifiedF = Optional.empty();
         }
 
