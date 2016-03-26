@@ -1,9 +1,12 @@
 package stafu.example;
 
 import javassist.Modifier;
+import stafu.Statification;
 
 import java.io.Serializable;
 import java.lang.reflect.Field;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 public final class Factorial {
     private Factorial() { }
@@ -22,34 +25,11 @@ public final class Factorial {
         }
     }
 
-    private static class Fac {
-        private final static IntUnaryOperator f = null;
-        static {
-            IntUnaryOperator c = statify(x -> 1);
-            IntUnaryOperator rec = statify(x -> x * f.applyAsInt(x - 1));
-
-            try {
-                setFinalStatic(Fac.class.getDeclaredField("f"), statify(x -> x <= 0 ? c.applyAsInt(x) : rec.applyAsInt(x)));
-            } catch (NoSuchFieldException | IllegalAccessException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    // Copied from Statification
-    private static void setFinalStatic(Field field, Object value) throws NoSuchFieldException, IllegalAccessException {
-        Field modField = Field.class.getDeclaredField("modifiers");
-        modField.setAccessible(true);
-        modField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-
-        field.setAccessible(true);
-        field.set(null, value);
-    }
-
     public static void main(String[] args) throws NoSuchFieldException, IllegalAccessException {
-        IntUnaryOperator factorial = x -> factorial(x);
+        IntUnaryOperator factorial;
 
-        IntUnaryOperator factorialGen = new Object() {
+        factorial = x -> factorial(x);
+        factorial = new Object() {
             private IntUnaryOperator f = null;
             {
                 IntUnaryOperator c = statify(x -> 1);
@@ -58,21 +38,24 @@ public final class Factorial {
                 f = statify(x -> x <= 0 ? c.applyAsInt(x) : rec.applyAsInt(x));
             }
         }.f;
-        factorialGen = Fac.f;
+        factorial = Statification.fix(s -> {
+            // s.get();
+            IntUnaryOperator c = statify(x -> 1);
+            IntUnaryOperator rec = statify(x -> x * s.get().applyAsInt(x - 1));
+            return statify(x -> x <= 0 ? c.applyAsInt(x) : rec.applyAsInt(x));
+        });
 
         int res = 0;
-        for (int i = 0; i < 300000000; i++) {
+        for (int i = 0; i < 1000000000; i++) {
             res += factorial.applyAsInt(i % 10);
-            // res += factorialGen.applyAsInt(i % 10);
         }
 
         long start;
         long end;
 
         start = System.currentTimeMillis();
-        for (int i = 0; i < 300000000; i++) {
+        for (int i = 0; i < 1000000000; i++) {
             res += factorial.applyAsInt(i % 10);
-            // res += factorialGen.applyAsInt(i % 10);
         }
         end = System.currentTimeMillis();
 

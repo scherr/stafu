@@ -13,6 +13,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 // -XX:+UnlockDiagnosticVMOptions -XX:MaxInlineLevel=100 -XX:-ClipInlining -XX:-PrintInlining -XX:-PrintFlagsFinal
 public final class Statification {
@@ -33,7 +35,7 @@ public final class Statification {
 
     private Statification() { }
 
-    public static <F extends Serializable> F statify(F functional) {
+    public static synchronized <F extends Serializable> F statify(F functional) {
         Optional<F> statifiedFunctional = getSerializedLambda(functional).flatMap(sl -> {
             if (sl.getImplMethodKind() != ConstPool.REF_invokeStatic) {
                 return Optional.empty();
@@ -107,11 +109,11 @@ public final class Statification {
                 statifiedClass.setModifiers(Modifier.PUBLIC | Modifier.FINAL);
 
                 byte[] bytes = statifiedClass.toBytecode();
+                statifiedClass.detach();
 
                 return getUnsafe().flatMap(unsafe -> {
                     try {
                         Class<?> definedClass = unsafe.defineAnonymousClass(capturingClass, bytes, new Object[0]);
-                        statifiedClass.detach();
 
                         for (int i = 0; i < sl.getCapturedArgCount(); i++) {
 
@@ -134,6 +136,69 @@ public final class Statification {
             return statifiedFunctional.get();
         } else {
             return functional;
+        }
+    }
+
+    public static synchronized <F> F fix(Function<Supplier<F>, F> generator) {
+        Optional<F> statifiedF;
+        try {
+            ClassPool cp = ClassPool.getDefault();
+            CtClass fixClass = cp.makeClass("stafu.Fix");
+            fixClass.addInterface(cp.get("java.util.function.Supplier"));
+            fixClass.setModifiers(Modifier.FINAL);
+
+            CtField fixedPointField = CtField.make("private static final Object fixedPoint;", fixClass);
+            fixClass.addField(fixedPointField);
+
+            CtMethod getMethod = CtMethod.make(
+                    "public Object get() {"
+                  + "    if (stafu.Fix.fixedPoint == null) {"
+                  + "        throw new RuntimeException(\"Premature fixed-point retrieval. It is not available yet!\");"
+                  + "    }"
+                  + "    return stafu.Fix.fixedPoint;"
+                  + "}", fixClass);
+            fixClass.addMethod(getMethod);
+
+            fixClass.addConstructor(CtNewConstructor.defaultConstructor(fixClass));
+
+            byte[] bytes = fixClass.toBytecode();
+            fixClass.detach();
+
+            statifiedF = getUnsafe().flatMap(unsafe -> {
+                try {
+                    Class<?> definedClass = unsafe.defineAnonymousClass(generator.getClass(), bytes, new Object[0]);
+
+                    Supplier<F> supplier = (Supplier<F>) definedClass.newInstance();
+                    F f = generator.apply(supplier);
+
+                    Field field = definedClass.getDeclaredField("fixedPoint");
+
+                    setFinalStatic(field, f);
+                    return Optional.of(f);
+                } catch (IllegalAccessException | NoSuchFieldException | InstantiationException e) {
+                    // e.printStackTrace();
+                    return Optional.empty();
+                }
+            });
+        } catch (CannotCompileException | IOException | NotFoundException e) {
+            // e.printStackTrace();
+            statifiedF = Optional.empty();
+        }
+
+        if (statifiedF.isPresent()) {
+            return statifiedF.get();
+        } else {
+            return new Object() {
+                private F fixedPoint;
+                {
+                    fixedPoint = generator.apply(statify((Serializable & Supplier<F>) () -> {
+                        if (fixedPoint == null) {
+                            throw new RuntimeException("Premature fixed-point retrieval. It is not available yet!");
+                        }
+                        return fixedPoint;
+                    }));
+                }
+            }.fixedPoint;
         }
     }
 

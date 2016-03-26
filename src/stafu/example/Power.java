@@ -39,13 +39,14 @@ public final class Power {
     }
 
     public static void main(String[] args) {
-        IntUnaryOperator power45 = x -> power(x, 45);
-        IntUnaryOperator powerGen45 = powerGen(statify((x -> x)), 45);
+        IntUnaryOperator power45;
+
+        power45 = x -> power(x, 45);
+        power45 = powerGen(statify((x -> x)), 45);
 
         int res = 0;
         for (int i = 0; i < 1000000000; i++) {
-            // res += power45.applyAsInt(i);
-            res += powerGen45.applyAsInt(i);
+            res += power45.applyAsInt(i);
         }
 
         long start;
@@ -53,8 +54,7 @@ public final class Power {
 
         start = System.currentTimeMillis();
         for (int i = 0; i < 1000000000; i++) {
-            // res += power45.applyAsInt(i);
-            res += powerGen45.applyAsInt(i);
+            res += power45.applyAsInt(i);
         }
         end = System.currentTimeMillis();
 

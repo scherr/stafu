@@ -95,15 +95,16 @@ public final class SparseMatrixVectorProduct {
                 {0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
                 {0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
         };
-
         int[] vec = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
 
-        Function<int[], int[]> matVecProd = v -> matVecProd(mat, v);
-        Function<int[], int[]> matVecProdGen = matVecProdGen(mat, statify(v -> v));
+        Function<int[], int[]> matVecProd;
+
+        matVecProd = v -> matVecProd(mat, v);
+        matVecProd = matVecProdGen(mat, statify(v -> v));
 
         /*
-        matVecProdGen = v -> {
+        matVecProd = v -> {
             int[] res = new int[12];
 
             int v2 = v[2];
@@ -142,8 +143,7 @@ public final class SparseMatrixVectorProduct {
         int[] res = null;
 
         for (int i = 0; i < 100000000; i++) {
-            // res = matVecProd.apply(vec);
-            res = matVecProdGen.apply(vec);
+            res = matVecProd.apply(vec);
         }
 
         long start;
@@ -151,8 +151,7 @@ public final class SparseMatrixVectorProduct {
 
         start = System.currentTimeMillis();
         for (int i = 0; i < 100000000; i++) {
-            // res = matVecProd.apply(vec);
-            res = matVecProdGen.apply(vec);
+            res = matVecProd.apply(vec);
         }
         end = System.currentTimeMillis();
 

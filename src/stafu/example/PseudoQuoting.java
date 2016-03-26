@@ -93,13 +93,14 @@ public final class PseudoQuoting {
     }
 
     public static void main(String[] args) {
-        IntUnaryOperator power30 = x -> power(x, 30);
-        IntUnaryOperator powerGen30 = run(x -> powerQ(x, 30));
+        IntUnaryOperator power30;
+
+        power30 = x -> power(x, 30);
+        power30 = run(x -> powerQ(x, 30));
 
         int res = 0;
         for (int i = 0; i < 100000000; i++) {
             res += power30.applyAsInt(i);
-            // res += powerGen30.applyAsInt(i);
         }
 
         long start;
@@ -108,7 +109,6 @@ public final class PseudoQuoting {
         start = System.currentTimeMillis();
         for (int i = 0; i < 100000000; i++) {
             res += power30.applyAsInt(i);
-            // res += powerGen30.applyAsInt(i);
         }
         end = System.currentTimeMillis();
 
