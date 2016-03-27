@@ -77,6 +77,9 @@ public final class PseudoQuoting {
             return 1;
         } else if (y == 1) {
             return x;
+        } else if (y % 2 == 0) {
+            int t = power(x, y / 2);
+            return t * t;
         } else {
             return x * power(x, y - 1);
         }
@@ -87,28 +90,31 @@ public final class PseudoQuoting {
             return lift(1);
         } else if (y == 1) {
             return x;
+        } else if (y % 2 == 0) {
+            Q t = powerQ(x, y / 2);
+            return quote(t, z -> z * z);
         } else {
             return quote(x, powerQ(x, y - 1), (z, w) -> z * w);
         }
     }
 
     public static void main(String[] args) {
-        IntUnaryOperator power30;
+        IntUnaryOperator power45;
 
-        power30 = x -> power(x, 30);
-        power30 = run(x -> powerQ(x, 30));
+        power45 = x -> power(x, 45);
+        power45 = run(x -> powerQ(x, 45));
 
         int res = 0;
-        for (int i = 0; i < 100000000; i++) {
-            res += power30.applyAsInt(i);
+        for (int i = 0; i < 1000000000; i++) {
+            res += power45.applyAsInt(i);
         }
 
         long start;
         long end;
 
         start = System.currentTimeMillis();
-        for (int i = 0; i < 100000000; i++) {
-            res += power30.applyAsInt(i);
+        for (int i = 0; i < 1000000000; i++) {
+            res += power45.applyAsInt(i);
         }
         end = System.currentTimeMillis();
 

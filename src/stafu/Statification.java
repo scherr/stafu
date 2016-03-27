@@ -1,6 +1,7 @@
 package stafu;
 
 import javassist.*;
+import javassist.bytecode.BootstrapMethodsAttribute;
 import javassist.bytecode.ConstPool;
 import javassist.bytecode.Descriptor;
 import sun.misc.Unsafe;
@@ -59,12 +60,12 @@ public final class Statification {
 
                     Class<?> capturingClass = Class.forName(Descriptor.toJavaName(sl.getCapturingClass()));
                     // CtClass statifiedClass = cp.makeClass("stafu.Statified");
-                    Package capturingClassPackage = capturingClass.getPackage();
+                    String implClassPackageName = implClass.getPackageName();
                     CtClass statifiedClass;
-                    if (capturingClassPackage == null) {
+                    if (implClassPackageName == null) {
                         statifiedClass = cp.makeClass("Statified");
                     } else {
-                        statifiedClass = cp.makeClass(capturingClassPackage.getName() + ".Statified");
+                        statifiedClass = cp.makeClass(implClassPackageName + ".Statified");
                     }
                     // It seems the later (anonymized) renaming mechanism is able to avoid class-name conflicts
 
@@ -91,6 +92,13 @@ public final class Statification {
                     CtClass fimReturnType = Descriptor.getReturnType(sl.getFunctionalInterfaceMethodSignature(), cp);
                     CtMethod fim = new CtMethod(fimReturnType, sl.getFunctionalInterfaceMethodName(), fimParamTypes, statifiedClass);
                     statifiedClass.addMethod(fim);
+
+                    /*
+                    // This would allow us to simply call the original method but it seems the JIT compiler will
+                    // not like this. Copying is necessary! TODO: Include all transitively invokedynamic targets!
+                    implMethod.setModifiers(Modifier.PUBLIC | Modifier.STATIC);
+                    exp.append(implClass.getName() + "." + implMethod.getName() + "(");
+                     */
 
                     StringBuilder exp = new StringBuilder();
                     exp.append(lambdaMethod.getName() + "(");
