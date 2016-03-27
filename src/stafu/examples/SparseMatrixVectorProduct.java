@@ -1,4 +1,4 @@
-package stafu.example;
+package stafu.examples;
 
 import java.io.Serializable;
 import java.util.Arrays;

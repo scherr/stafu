@@ -18,12 +18,16 @@ import java.util.function.Supplier;
 
 // -XX:+UnlockDiagnosticVMOptions -XX:MaxInlineLevel=100 -XX:-ClipInlining -XX:-PrintInlining -XX:-PrintFlagsFinal
 public final class Statification {
-    static final CtClass OBJECT_CT_CLASS;
-    static final CtClass SERIALIZABLE_CT_CLASS;
-    static final CtMethod METAFACTORY_CT_METHOD;
+    private static final Unsafe UNSAFE;
+
+    private static final CtClass OBJECT_CT_CLASS;
+    private static final CtClass SERIALIZABLE_CT_CLASS;
+    private static final CtMethod METAFACTORY_CT_METHOD;
 
     static {
         try {
+            UNSAFE = getUnsafe().orElseGet(() -> null);
+
             OBJECT_CT_CLASS = ClassPool.getDefault().get("java.lang.Object");
             SERIALIZABLE_CT_CLASS = ClassPool.getDefault().get("java.io.Serializable");
             METAFACTORY_CT_METHOD = ClassPool.getDefault().getMethod("java.lang.invoke.LambdaMetafactory", "metafactory");
@@ -36,84 +40,87 @@ public final class Statification {
     private Statification() { }
 
     public static synchronized <F extends Serializable> F statify(F functional) {
-        Optional<F> statifiedFunctional = getSerializedLambda(functional).flatMap(sl -> {
-            if (sl.getImplMethodKind() != ConstPool.REF_invokeStatic) {
-                return Optional.empty();
-            }
-
-            try {
-                ClassPool cp = ClassPool.getDefault();
-
-                CtClass implClass = cp.get(Descriptor.toJavaName(sl.getImplClass()));
-                CtMethod implMethod = implClass.getMethod(sl.getImplMethodName(), sl.getImplMethodSignature());
-
-                CtClass fic = cp.get(Descriptor.toJavaName(sl.getFunctionalInterfaceClass()));
-
-                Class<?> capturingClass = Class.forName(Descriptor.toJavaName(sl.getCapturingClass()));
-                // CtClass statifiedClass = cp.makeClass("stafu.Statified");
-                Package capturingClassPackage = capturingClass.getPackage();
-                CtClass statifiedClass;
-                if (capturingClassPackage == null) {
-                    statifiedClass = cp.makeClass("Statified");
-                } else {
-                    statifiedClass = cp.makeClass(capturingClassPackage.getName() + ".Statified");
-                }
-                // It seems the later (anonymized) renaming mechanism is able to avoid class-name conflicts
-
-                statifiedClass.setInterfaces(new CtClass[]{fic, SERIALIZABLE_CT_CLASS});
-                statifiedClass.addConstructor(CtNewConstructor.defaultConstructor(statifiedClass));
-
-                CtClass[] implMethodParamTypes;
-                CtClass implMethodReturnType;
-                implMethodParamTypes = Descriptor.getParameterTypes(sl.getImplMethodSignature(), cp);
-                implMethodReturnType = Descriptor.getReturnType(sl.getImplMethodSignature(), cp);
-
-                for (int i = 0; i < sl.getCapturedArgCount(); i++) {
-                    CtField argField = CtField.make("private static final " + implMethodParamTypes[i].getName() + " captured" + i + ";", statifiedClass);
-                    statifiedClass.addField(argField);
+        Optional<F> statifiedFunctional;
+        if (UNSAFE == null) {
+            statifiedFunctional = Optional.empty();
+        } else {
+            statifiedFunctional = getSerializedLambda(functional).flatMap(sl -> {
+                if (sl.getImplMethodKind() != ConstPool.REF_invokeStatic) {
+                    return Optional.empty();
                 }
 
-                ClassMap map = new ClassMap();
-                map.fix(implClass); // This is necessary due to the copying behavior of CtMethod's constructor!
-                CtMethod lambdaMethod = new CtMethod(implMethod, statifiedClass, map);
-                lambdaMethod.setName(statifiedClass.makeUniqueName("lambda"));
-                statifiedClass.addMethod(lambdaMethod);
+                try {
+                    ClassPool cp = ClassPool.getDefault();
 
-                CtClass[] fimParamTypes = Descriptor.getParameterTypes(sl.getFunctionalInterfaceMethodSignature(), cp);
-                CtClass fimReturnType = Descriptor.getReturnType(sl.getFunctionalInterfaceMethodSignature(), cp);
-                CtMethod fim = new CtMethod(fimReturnType, sl.getFunctionalInterfaceMethodName(), fimParamTypes, statifiedClass);
-                statifiedClass.addMethod(fim);
+                    CtClass implClass = cp.get(Descriptor.toJavaName(sl.getImplClass()));
+                    CtMethod implMethod = implClass.getMethod(sl.getImplMethodName(), sl.getImplMethodSignature());
 
-                StringBuilder exp = new StringBuilder();
-                exp.append(lambdaMethod.getName() + "(");
-                for (int i = 0; i < sl.getCapturedArgCount(); i++) {
-                    if (i > 0) {
-                        exp.append(", ");
+                    CtClass fic = cp.get(Descriptor.toJavaName(sl.getFunctionalInterfaceClass()));
+
+                    Class<?> capturingClass = Class.forName(Descriptor.toJavaName(sl.getCapturingClass()));
+                    // CtClass statifiedClass = cp.makeClass("stafu.Statified");
+                    Package capturingClassPackage = capturingClass.getPackage();
+                    CtClass statifiedClass;
+                    if (capturingClassPackage == null) {
+                        statifiedClass = cp.makeClass("Statified");
+                    } else {
+                        statifiedClass = cp.makeClass(capturingClassPackage.getName() + ".Statified");
                     }
-                    exp.append("captured" + i);
-                }
-                for (int i = sl.getCapturedArgCount(); i < implMethodParamTypes.length; i++) {
-                    if (i > 0) {
-                        exp.append(", ");
+                    // It seems the later (anonymized) renaming mechanism is able to avoid class-name conflicts
+
+                    statifiedClass.setInterfaces(new CtClass[]{fic, SERIALIZABLE_CT_CLASS});
+                    statifiedClass.addConstructor(CtNewConstructor.defaultConstructor(statifiedClass));
+
+                    CtClass[] implMethodParamTypes;
+                    CtClass implMethodReturnType;
+                    implMethodParamTypes = Descriptor.getParameterTypes(sl.getImplMethodSignature(), cp);
+                    implMethodReturnType = Descriptor.getReturnType(sl.getImplMethodSignature(), cp);
+
+                    for (int i = 0; i < sl.getCapturedArgCount(); i++) {
+                        CtField argField = CtField.make("private static final " + implMethodParamTypes[i].getName() + " captured" + i + ";", statifiedClass);
+                        statifiedClass.addField(argField);
                     }
-                    exp.append(convert("$" + (i - sl.getCapturedArgCount() + 1), fimParamTypes[i - sl.getCapturedArgCount()], implMethodParamTypes[i]));
-                }
-                exp.append(")");
 
-                if (fimReturnType != CtClass.voidType) {
-                    fim.setBody("{ return " + convert(exp.toString(), implMethodReturnType, fimReturnType) + "; }");
-                } else {
-                    fim.setBody("{" + exp.toString() + "; }");
-                }
+                    ClassMap map = new ClassMap();
+                    map.fix(implClass); // This is necessary due to the copying behavior of CtMethod's constructor!
+                    CtMethod lambdaMethod = new CtMethod(implMethod, statifiedClass, map);
+                    lambdaMethod.setName(statifiedClass.makeUniqueName("lambda"));
+                    statifiedClass.addMethod(lambdaMethod);
 
-                statifiedClass.setModifiers(Modifier.PUBLIC | Modifier.FINAL);
+                    CtClass[] fimParamTypes = Descriptor.getParameterTypes(sl.getFunctionalInterfaceMethodSignature(), cp);
+                    CtClass fimReturnType = Descriptor.getReturnType(sl.getFunctionalInterfaceMethodSignature(), cp);
+                    CtMethod fim = new CtMethod(fimReturnType, sl.getFunctionalInterfaceMethodName(), fimParamTypes, statifiedClass);
+                    statifiedClass.addMethod(fim);
 
-                byte[] bytes = statifiedClass.toBytecode();
-                statifiedClass.detach();
+                    StringBuilder exp = new StringBuilder();
+                    exp.append(lambdaMethod.getName() + "(");
+                    for (int i = 0; i < sl.getCapturedArgCount(); i++) {
+                        if (i > 0) {
+                            exp.append(", ");
+                        }
+                        exp.append("captured" + i);
+                    }
+                    for (int i = sl.getCapturedArgCount(); i < implMethodParamTypes.length; i++) {
+                        if (i > 0) {
+                            exp.append(", ");
+                        }
+                        exp.append(convert("$" + (i - sl.getCapturedArgCount() + 1), fimParamTypes[i - sl.getCapturedArgCount()], implMethodParamTypes[i]));
+                    }
+                    exp.append(")");
 
-                return getUnsafe().flatMap(unsafe -> {
+                    if (fimReturnType != CtClass.voidType) {
+                        fim.setBody("{ return " + convert(exp.toString(), implMethodReturnType, fimReturnType) + "; }");
+                    } else {
+                        fim.setBody("{" + exp.toString() + "; }");
+                    }
+
+                    statifiedClass.setModifiers(Modifier.PUBLIC | Modifier.FINAL);
+
+                    byte[] bytes = statifiedClass.toBytecode();
+                    statifiedClass.detach();
+
                     try {
-                        Class<?> definedClass = unsafe.defineAnonymousClass(capturingClass, bytes, new Object[0]);
+                        Class<?> definedClass = UNSAFE.defineAnonymousClass(capturingClass, bytes, new Object[0]);
 
                         for (int i = 0; i < sl.getCapturedArgCount(); i++) {
 
@@ -125,12 +132,12 @@ public final class Statification {
                         e.printStackTrace();
                         return Optional.empty();
                     }
-                });
-            } catch (IOException | CannotCompileException | ClassNotFoundException | NotFoundException e) {
-                e.printStackTrace();
-                return Optional.empty();
-            }
-        });
+                } catch (IOException | CannotCompileException | ClassNotFoundException | NotFoundException e) {
+                    e.printStackTrace();
+                    return Optional.empty();
+                }
+            });
+        }
 
         if (statifiedFunctional.isPresent()) {
             return statifiedFunctional.get();
@@ -141,47 +148,52 @@ public final class Statification {
 
     public static synchronized <F> F fix(Function<Supplier<F>, F> generator) {
         Optional<F> statifiedF;
-        try {
-            ClassPool cp = ClassPool.getDefault();
-            CtClass fixClass = cp.makeClass("stafu.Fix");
-            fixClass.addInterface(cp.get("java.util.function.Supplier"));
 
-            CtField fixedPointField = CtField.make("private static final Object fixedPoint;", fixClass);
-            fixClass.addField(fixedPointField);
-
-            CtMethod getMethod = CtMethod.make(
-                    "public Object get() {"
-                  + "    if (stafu.Fix.fixedPoint == null) {"
-                  + "        throw new RuntimeException(\"Premature fixed-point retrieval. It is not available yet!\");"
-                  + "    }"
-                  + "    return stafu.Fix.fixedPoint;"
-                  + "}", fixClass);
-            fixClass.addMethod(getMethod);
-
-            fixClass.addConstructor(CtNewConstructor.defaultConstructor(fixClass));
-
-            byte[] bytes = fixClass.toBytecode();
-            fixClass.detach();
-
-            statifiedF = getUnsafe().flatMap(unsafe -> {
-                try {
-                    Class<?> definedClass = unsafe.defineAnonymousClass(generator.getClass(), bytes, new Object[0]);
-
-                    Supplier<F> supplier = (Supplier<F>) definedClass.newInstance();
-                    F f = generator.apply(supplier);
-
-                    Field field = definedClass.getDeclaredField("fixedPoint");
-
-                    setFinalStatic(field, f);
-                    return Optional.of(f);
-                } catch (IllegalAccessException | NoSuchFieldException | InstantiationException e) {
-                    e.printStackTrace();
-                    return Optional.empty();
-                }
-            });
-        } catch (CannotCompileException | IOException | NotFoundException e) {
-            e.printStackTrace();
+        if (UNSAFE == null) {
             statifiedF = Optional.empty();
+        } else {
+            try {
+                ClassPool cp = ClassPool.getDefault();
+                CtClass fixClass = cp.makeClass("stafu.Fix");
+                fixClass.addInterface(cp.get("java.util.function.Supplier"));
+
+                CtField fixedPointField = CtField.make("private static final Object fixedPoint;", fixClass);
+                fixClass.addField(fixedPointField);
+
+                CtMethod getMethod = CtMethod.make(
+                        "public Object get() {"
+                                + "    if (stafu.Fix.fixedPoint == null) {"
+                                + "        throw new RuntimeException(\"Premature fixed-point retrieval. It is not available yet!\");"
+                                + "    }"
+                                + "    return stafu.Fix.fixedPoint;"
+                                + "}", fixClass);
+                fixClass.addMethod(getMethod);
+
+                fixClass.addConstructor(CtNewConstructor.defaultConstructor(fixClass));
+
+                byte[] bytes = fixClass.toBytecode();
+                fixClass.detach();
+
+                statifiedF = getUnsafe().flatMap(unsafe -> {
+                    try {
+                        Class<?> definedClass = unsafe.defineAnonymousClass(generator.getClass(), bytes, new Object[0]);
+
+                        Supplier<F> supplier = (Supplier<F>) definedClass.newInstance();
+                        F f = generator.apply(supplier);
+
+                        Field field = definedClass.getDeclaredField("fixedPoint");
+
+                        setFinalStatic(field, f);
+                        return Optional.of(f);
+                    } catch (IllegalAccessException | NoSuchFieldException | InstantiationException e) {
+                        e.printStackTrace();
+                        return Optional.empty();
+                    }
+                });
+            } catch (CannotCompileException | IOException | NotFoundException e) {
+                e.printStackTrace();
+                statifiedF = Optional.empty();
+            }
         }
 
         if (statifiedF.isPresent()) {

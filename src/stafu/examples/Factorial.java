@@ -1,12 +1,8 @@
-package stafu.example;
+package stafu.examples;
 
-import javassist.Modifier;
 import stafu.Statification;
 
 import java.io.Serializable;
-import java.lang.reflect.Field;
-import java.util.function.Function;
-import java.util.function.Supplier;
 
 public final class Factorial {
     private Factorial() { }
