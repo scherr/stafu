@@ -176,7 +176,7 @@ public final class Statification {
         // Any other use of invokedynamic or other sources of such issues will lead to failure (fallback to original
         // non-statified functional if possible).
 
-        // First we copy the entire bootstrap method attribute and in this process fill the constant pool with new data
+        // First we copy the entire bootstrap method attribute and in this process fill the constant pool with new data.
         // This is a very conservative approach. In practice it is likely that none of the bootstrap methods is
         // actually used in the statified class. A more fine-grained solution would involve scanning imported
         // implementation methods for invokedynamic instructions and some tinkering with a selective copying mechanism
@@ -217,7 +217,6 @@ public final class Statification {
                         System.arraycopy(args, 2, encodedArgs, 4, args.length - 2);
 
                         // We need to actually change the bootstrap method, i.e. assign a new one to bms[i]
-                        ClassPool cp = statifiedClass.getClassPool();
                         int newBmClassInfo = constPool.addClassInfo(Statification.class.getName());
                         int newBmMethodRefInfo = constPool.addMethodrefInfo(newBmClassInfo, LAMBDA_METAFACTORY_PROXY.getName(), LAMBDA_METAFACTORY_PROXY.getSignature());
                         int newBmIndex = constPool.addMethodHandleInfo(bmKind, newBmMethodRefInfo);
