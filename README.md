@@ -26,7 +26,7 @@ private static IntUnaryOperator powerGen(IntUnaryOperator x, int y) {
     
 // ...   
   
-IntUnaryOperator power45 = powerGen(statify((x -> x)), 45);
+IntUnaryOperator power45 = powerGen(statify(x -> x), 45);
 ```
 
 The same code without the `statify(...)` calls would still work (`statify` does not change the type or behavior), but the version with
